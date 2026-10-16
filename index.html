@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>실시간 투표/설문조사</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    }
+
+    body {
+      background-color: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .poll-card {
+      background: #ffffff;
+      width: 100%;
+      max-width: 480px;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 24px;
+      color: #1a1d20;
+      font-size: 1.4rem;
+    }
+
+    .vote-buttons {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 30px;
+    }
+
+    .vote-btn {
+      flex: 1;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: 2px solid #0066ff;
+      background-color: #ffffff;
+      color: #0066ff;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .vote-btn:hover {
+      background-color: #0066ff;
+      color: #ffffff;
+    }
+
+    .vote-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .results-container {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .result-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .item-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .progress-bg {
+      width: 100%;
+      height: 20px;
+      background-color: #e9ecef;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0066ff, #00c6ff);
+      border-radius: 10px;
+      transition: width 0.5s ease-out;
+    }
+
+    .total-votes {
+      text-align: right;
+      margin-top: 20px;
+      font-size: 0.85rem;
+      color: #6c757d;
+    }
+
+    .loading-overlay {
+      text-align: center;
+      color: #0066ff;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="poll-card">
+    <h2>선호하는 안건을 선택해주세요</h2>
+
+    <!-- 투표 버튼 영역 -->
+    <div class="vote-buttons">
+      <button class="vote-btn" onclick="submitVote('A안')">A안 선택</button>
+      <button class="vote-btn" onclick="submitVote('B안')">B안 선택</button>
+    </div>
+
+    <!-- 그래프 표시 영역 -->
+    <div class="results-container" id="results">
+      <div class="result-item">
+        <div class="item-header">
+          <span>A안</span>
+          <span id="percent-A">0% (0표)</span>
+        </div>
+        <div class="progress-bg">
+          <div class="progress-bar" id="bar-A"></div>
+        </div>
+      </div>
+
+      <div class="result-item">
+        <div class="item-header">
+          <span>B안</span>
+          <span id="percent-B">0% (0표)</span>
+        </div>
+        <div class="progress-bg">
+          <div class="progress-bar" id="bar-B"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="total-votes" id="total-count">총 투표수: 0표</div>
+    <div class="loading-overlay" id="loading" style="display: none;">처리 중...</div>
+  </div>
+
+  <script>
+    // 배포한 GAS 웹 앱 URL을 입력하세요.
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbydyG6vZdTu8wRpQx_NFC0GEgtp4cqtPQIIQ5Hd40k0mOKRFojGtF_nlAf9bZcyeZLH/exec";
+
+    // 페이지 로드 시 현재 투표 결과 GET 요청
+    window.addEventListener('DOMContentLoaded', fetchVoteResults);
+
+    function fetchVoteResults() {
+      fetch(GAS_WEB_APP_URL)
+        .then(res => res.json())
+        .then(result => {
+          if (result.status === "success") {
+            renderResults(result.data);
+          }
+        })
+        .catch(err => console.error("데이터 로드 실패:", err));
+    }
+
+    function submitVote(option) {
+      toggleLoading(true);
+
+      fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8' // GAS CORS 회피를 위해 text/plain 사용
+        },
+        body: JSON.stringify({ option: option })
+      })
+      .then(res => res.json())
+      .then(result => {
+        toggleLoading(false);
+        if (result.status === "success") {
+          renderResults(result.data);
+        } else {
+          alert("투표 반영 중 오류가 발생했습니다.");
+        }
+      })
+      .catch(err => {
+        toggleLoading(false);
+        console.error("투표 제출 실패:", err);
+      });
+    }
+
+    // 결과를 백분율로 계산하여 화면 및 CSS 바 차트 업데이트
+    function renderResults(data) {
+      const countA = data['A안'] || 0;
+      const countB = data['B안'] || 0;
+      const total = countA + countB;
+
+      const percentA = total > 0 ? Math.round((countA / total) * 100) : 0;
+      const percentB = total > 0 ? Math.round((countB / total) * 100) : 0;
+
+      // A안 UI 업데이트
+      document.getElementById('bar-A').style.width = percentA + '%';
+      document.getElementById('percent-A').textContent = `${percentA}% (${countA}표)`;
+
+      // B안 UI 업데이트
+      document.getElementById('bar-B').style.width = percentB + '%';
+      document.getElementById('percent-B').textContent = `${percentB}% (${countB}표)`;
+
+      // 총 투표수 업데이트
+      document.getElementById('total-count').textContent = `총 투표수: ${total}표`;
+    }
+
+    function toggleLoading(isLoading) {
+      const buttons = document.querySelectorAll('.vote-btn');
+      const loading = document.getElementById('loading');
+      
+      buttons.forEach(btn => btn.disabled = isLoading);
+      loading.style.display = isLoading ? 'block' : 'none';
+    }
+  </script>
+
+</body>
+</html>
