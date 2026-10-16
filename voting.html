@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>실시간 투표 웹앱</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Pretendard', sans-serif, Arial;
+    }
+
+    body {
+      background-color: #f4f7f6;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 500px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 24px;
+      color: #333;
+      font-size: 1.5rem;
+    }
+
+    .option-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .option-card {
+      border: 1px solid #e0e0e0;
+      padding: 16px;
+      border-radius: 8px;
+      background-color: #fafafa;
+    }
+
+    .option-info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-weight: bold;
+      color: #444;
+    }
+
+    .bar-container {
+      width: 100%;
+      background-color: #e0e0e0;
+      border-radius: 6px;
+      overflow: hidden;
+      height: 20px;
+      margin-bottom: 12px;
+    }
+
+    .bar {
+      height: 100%;
+      width: 0%;
+      background-color: #4caf50;
+      transition: width 0.4s ease-in-out;
+    }
+
+    .vote-btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      background-color: #2196f3;
+      color: white;
+      font-size: 0.95rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+
+    .vote-btn:hover {
+      background-color: #1976d2;
+    }
+
+    .vote-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .total-votes {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.9rem;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>선호도 투표</h1>
+    <div id="option-list" class="option-list"></div>
+    <div id="total-votes" class="total-votes">총 투표수: 계산 중...</div>
+  </div>
+
+  <!-- Firebase JavaScript SDK (v10 모듈) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // 1. 본인의 Firebase 설정 정보로 변경해주세요.
+    const firebaseConfig = {
+      apiKey: "AIzaSyD1QIrHyYu4K0MRUM_LfVYI2wSKj4BlL0E",
+      authDomain: "my-first-app-79b2b.firebaseapp.com",
+      databaseURL: "https://my-first-app-79b2b-default-rtdb.asia-southeast1.firebasedatabase.app/",
+      projectId: "my-first-app-79b2b",
+      storageBucket: "my-first-app-79b2b.firebasestorage.app",
+      messagingSenderId: "276631297820",
+      appId: "1:276631297820:web:1827f91b1ca4e46ac564d9"
+    };
+
+    // Firebase 초기화
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // 투표 항목 정의 (필요에 따라 항목을 추가하거나 수정할 수 있습니다)
+    const options = [
+      { id: "optionA", label: "A안" },
+      { id: "optionB", label: "B안" },
+      { id: "optionC", label: "C안" }
+    ];
+
+    const optionListEl = document.getElementById("option-list");
+    const totalVotesEl = document.getElementById("total-votes");
+
+    // 초기 UI 생성
+    function initUI() {
+      optionListEl.innerHTML = "";
+      options.forEach(opt => {
+        const card = document.createElement("div");
+        card.className = "option-card";
+        card.innerHTML = `
+          <div class="option-info">
+            <span>${opt.label}</span>
+            <span id="count-${opt.id}">0표 (0%)</span>
+          </div>
+          <div class="bar-container">
+            <div id="bar-${opt.id}" class="bar"></div>
+          </div>
+          <button class="vote-btn" data-id="${opt.id}">${opt.label} 투표하기</button>
+        `;
+        optionListEl.appendChild(card);
+      });
+
+      // 버튼 클릭 이벤트 리스너 추가
+      document.querySelectorAll(".vote-btn").forEach(button => {
+        button.addEventListener("click", (e) => {
+          const optionId = e.target.getAttribute("data-id");
+          vote(optionId);
+        });
+      });
+    }
+
+    // 2. 투표 처리 (runTransaction을 통해 동시성 문제를 방지하며 1 증가)
+    function vote(optionId) {
+      const voteRef = ref(db, `votes/${optionId}`);
+      runTransaction(voteRef, (currentValue) => {
+        return (currentValue || 0) + 1;
+      }).then(() => {
+        alert("투표가 완료되었습니다!");
+      }).catch((error) => {
+        console.error("투표 실패:", error);
+        alert("투표 처리 중 오류가 발생했습니다.");
+      });
+    }
+
+    // 3. 실시간 데이터 수신 및 백분율 계산 UI 업데이트
+    function listenToVotes() {
+      const votesRef = ref(db, "votes");
+      onValue(votesRef, (snapshot) => {
+        const data = snapshot.val() || {};
+        
+        // 전체 투표수 합산
+        let total = 0;
+        options.forEach(opt => {
+          total += (data[opt.id] || 0);
+        });
+
+        totalVotesEl.innerText = `총 투표수: ${total}표`;
+
+        // 각 항목의 백분율 계산 및 바/텍스트 업데이트
+        options.forEach(opt => {
+          const count = data[opt.id] || 0;
+          const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+
+          const countEl = document.getElementById(`count-${opt.id}`);
+          const barEl = document.getElementById(`bar-${opt.id}`);
+
+          if (countEl && barEl) {
+            countEl.innerText = `${count}표 (${percentage}%)`;
+            barEl.style.width = `${percentage}%`;
+          }
+        });
+      });
+    }
+
+    // 실행
+    initUI();
+    listenToVotes();
+  </script>
+</body>
+</html>
